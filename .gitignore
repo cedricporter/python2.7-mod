@@ -1,2 +1,13 @@
 *.pyc
 *.o
+Makefile
+Makefile.pre
+Misc/python.pc
+Modules/Setup
+Modules/Setup.config
+Modules/Setup.local
+Modules/config.c
+Modules/ld_so_aix
+config.log
+config.status
+pyconfig.h

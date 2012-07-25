@@ -1706,6 +1706,50 @@ compiler_while(struct compiler *c, stmt_ty s)
 }
 
 static int
+compiler_until(struct compiler *c, stmt_ty s)
+{
+    basicblock *loop, *orelse, *end, *anchor = NULL;
+    int constant = expr_constant(s->v.Until.test);
+
+    if (constant == 1) {
+        return 1;
+    }
+    loop = compiler_new_block(c);
+    end = compiler_new_block(c);
+    if (constant == -1) {
+        anchor = compiler_new_block(c);
+        if (anchor == NULL)
+            return 0;
+    }
+    if (loop == NULL || end == NULL)
+        return 0;
+
+    ADDOP_JREL(c, SETUP_LOOP, end);
+    compiler_use_next_block(c, loop);
+    if (!compiler_push_fblock(c, LOOP, loop))
+        return 0;
+    if (constant == -1) {
+        VISIT(c, expr, s->v.Until.test);
+        ADDOP_JABS(c, POP_JUMP_IF_TRUE, anchor);
+    }
+    VISIT_SEQ(c, stmt, s->v.Until.body);
+    ADDOP_JABS(c, JUMP_ABSOLUTE, loop);
+
+    /* XXX should the two POP instructions be in a separate block
+       if there is no else clause ?
+    */
+
+    if (constant == -1) {
+        compiler_use_next_block(c, anchor);
+        ADDOP(c, POP_BLOCK);
+    }
+    compiler_pop_fblock(c, LOOP, loop);
+    compiler_use_next_block(c, end);
+
+    return 1;
+}
+
+static int
 compiler_continue(struct compiler *c)
 {
     static const char LOOP_ERROR_MSG[] = "'continue' not properly in loop";
@@ -2131,6 +2175,8 @@ compiler_visit_stmt(struct compiler *c, stmt_ty s)
         return compiler_for(c, s);
     case While_kind:
         return compiler_while(c, s);
+    case Until_kind:
+        return compiler_until(c, s);
     case If_kind:
         return compiler_if(c, s);
     case Raise_kind:

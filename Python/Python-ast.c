@@ -89,6 +89,11 @@ static char *While_fields[]={
         "body",
         "orelse",
 };
+static PyTypeObject *Until_type;
+static char *Until_fields[]={
+        "test",
+        "body",
+};
 static PyTypeObject *If_type;
 static char *If_fields[]={
         "test",
@@ -706,6 +711,8 @@ static int init_types(void)
         if (!For_type) return 0;
         While_type = make_type("While", stmt_type, While_fields, 3);
         if (!While_type) return 0;
+        Until_type = make_type("Until", stmt_type, Until_fields, 2);
+        if (!Until_type) return 0;
         If_type = make_type("If", stmt_type, If_fields, 3);
         if (!If_type) return 0;
         With_type = make_type("With", stmt_type, With_fields, 3);
@@ -1231,6 +1238,26 @@ While(expr_ty test, asdl_seq * body, asdl_seq * orelse, int lineno, int
         p->v.While.test = test;
         p->v.While.body = body;
         p->v.While.orelse = orelse;
+        p->lineno = lineno;
+        p->col_offset = col_offset;
+        return p;
+}
+
+stmt_ty
+Until(expr_ty test, asdl_seq * body, int lineno, int col_offset, PyArena *arena)
+{
+        stmt_ty p;
+        if (!test) {
+                PyErr_SetString(PyExc_ValueError,
+                                "field test is required for Until");
+                return NULL;
+        }
+        p = (stmt_ty)PyArena_Malloc(arena, sizeof(*p));
+        if (!p)
+                return NULL;
+        p->kind = Until_kind;
+        p->v.Until.test = test;
+        p->v.Until.body = body;
         p->lineno = lineno;
         p->col_offset = col_offset;
         return p;
@@ -2358,6 +2385,20 @@ ast2obj_stmt(void* _o)
                 value = ast2obj_list(o->v.While.orelse, ast2obj_stmt);
                 if (!value) goto failed;
                 if (PyObject_SetAttrString(result, "orelse", value) == -1)
+                        goto failed;
+                Py_DECREF(value);
+                break;
+        case Until_kind:
+                result = PyType_GenericNew(Until_type, NULL, NULL);
+                if (!result) goto failed;
+                value = ast2obj_expr(o->v.Until.test);
+                if (!value) goto failed;
+                if (PyObject_SetAttrString(result, "test", value) == -1)
+                        goto failed;
+                Py_DECREF(value);
+                value = ast2obj_list(o->v.Until.body, ast2obj_stmt);
+                if (!value) goto failed;
+                if (PyObject_SetAttrString(result, "body", value) == -1)
                         goto failed;
                 Py_DECREF(value);
                 break;
@@ -4073,6 +4114,55 @@ obj2ast_stmt(PyObject* obj, stmt_ty* out, PyArena* arena)
                         return 1;
                 }
                 *out = While(test, body, orelse, lineno, col_offset, arena);
+                if (*out == NULL) goto failed;
+                return 0;
+        }
+        isinstance = PyObject_IsInstance(obj, (PyObject*)Until_type);
+        if (isinstance == -1) {
+                return 1;
+        }
+        if (isinstance) {
+                expr_ty test;
+                asdl_seq* body;
+
+                if (PyObject_HasAttrString(obj, "test")) {
+                        int res;
+                        tmp = PyObject_GetAttrString(obj, "test");
+                        if (tmp == NULL) goto failed;
+                        res = obj2ast_expr(tmp, &test, arena);
+                        if (res != 0) goto failed;
+                        Py_XDECREF(tmp);
+                        tmp = NULL;
+                } else {
+                        PyErr_SetString(PyExc_TypeError, "required field \"test\" missing from Until");
+                        return 1;
+                }
+                if (PyObject_HasAttrString(obj, "body")) {
+                        int res;
+                        Py_ssize_t len;
+                        Py_ssize_t i;
+                        tmp = PyObject_GetAttrString(obj, "body");
+                        if (tmp == NULL) goto failed;
+                        if (!PyList_Check(tmp)) {
+                                PyErr_Format(PyExc_TypeError, "Until field \"body\" must be a list, not a %.200s", tmp->ob_type->tp_name);
+                                goto failed;
+                        }
+                        len = PyList_GET_SIZE(tmp);
+                        body = asdl_seq_new(len, arena);
+                        if (body == NULL) goto failed;
+                        for (i = 0; i < len; i++) {
+                                stmt_ty value;
+                                res = obj2ast_stmt(PyList_GET_ITEM(tmp, i), &value, arena);
+                                if (res != 0) goto failed;
+                                asdl_seq_SET(body, i, value);
+                        }
+                        Py_XDECREF(tmp);
+                        tmp = NULL;
+                } else {
+                        PyErr_SetString(PyExc_TypeError, "required field \"body\" missing from Until");
+                        return 1;
+                }
+                *out = Until(test, body, lineno, col_offset, arena);
                 if (*out == NULL) goto failed;
                 return 0;
         }
@@ -6613,6 +6703,7 @@ init_ast(void)
         if (PyDict_SetItemString(d, "Print", (PyObject*)Print_type) < 0) return;
         if (PyDict_SetItemString(d, "For", (PyObject*)For_type) < 0) return;
         if (PyDict_SetItemString(d, "While", (PyObject*)While_type) < 0) return;
+        if (PyDict_SetItemString(d, "Until", (PyObject*)Until_type) < 0) return;
         if (PyDict_SetItemString(d, "If", (PyObject*)If_type) < 0) return;
         if (PyDict_SetItemString(d, "With", (PyObject*)With_type) < 0) return;
         if (PyDict_SetItemString(d, "Raise", (PyObject*)Raise_type) < 0) return;

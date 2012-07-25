@@ -11,3 +11,9 @@ Modules/ld_so_aix
 config.log
 config.status
 pyconfig.h
+Parser/pgen
+Parser/pgen.stamp
+build/
+libpython2.7.a
+python
+python-gdb.py
